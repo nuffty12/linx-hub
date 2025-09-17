@@ -1,0 +1,217 @@
+-- Simple UI Library (Rayfield-style)
+-- Put this in GitHub / Pastebin / ModuleScript
+-- Author: ChatGPT Custom Build
+
+local UILib = {}
+UILib.__index = UILib
+
+-- Services
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+
+-- Theme
+local theme = {
+    bgColor = Color3.fromRGB(30,30,30),
+    tabColor = Color3.fromRGB(40,40,40),
+    buttonColor = Color3.fromRGB(50,120,220),
+    textColor = Color3.fromRGB(255,255,255)
+}
+
+-- Destroy old gui if exists
+if CoreGui:FindFirstChild("UILibGui") then
+    CoreGui.UILibGui:Destroy()
+end
+
+-- Utility
+local function create(class, props)
+    local inst = Instance.new(class)
+    for k,v in pairs(props) do
+        inst[k] = v
+    end
+    return inst
+end
+
+-- Window
+function UILib:Window(title, accent, toggleKey)
+    local self = setmetatable({}, UILib)
+
+    -- ScreenGui
+    self.gui = create("ScreenGui", {
+        Name = "UILibGui",
+        Parent = CoreGui,
+        ResetOnSpawn = false
+    })
+
+    -- Main Frame
+    self.main = create("Frame", {
+        Parent = self.gui,
+        BackgroundColor3 = theme.bgColor,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 500, 0, 300),
+        Position = UDim2.new(0.5,-250,0.5,-150)
+    })
+    create("UICorner",{Parent=self.main,CornerRadius=UDim.new(0,10)})
+
+    -- Title
+    self.title = create("TextLabel", {
+        Parent = self.main,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,0,30),
+        Text = title or "UILib Hub",
+        TextColor3 = accent or theme.textColor,
+        Font = Enum.Font.GothamBold,
+        TextSize = 18
+    })
+
+    -- Tabs holder
+    self.tabHolder = create("Frame", {
+        Parent = self.main,
+        BackgroundColor3 = theme.tabColor,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 120, 1, -30),
+        Position = UDim2.new(0,0,0,30)
+    })
+
+    -- Page holder
+    self.pageHolder = create("Frame", {
+        Parent = self.main,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,-120,1,-30),
+        Position = UDim2.new(0,120,0,30)
+    })
+
+    self.pages = {}
+    self.currentPage = nil
+
+    -- Toggle Key
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if not gpe and input.KeyCode == (toggleKey or Enum.KeyCode.RightControl) then
+            self.gui.Enabled = not self.gui.Enabled
+        end
+    end)
+
+    return self
+end
+
+-- Create a new tab
+function UILib:Tab(tabName)
+    local page = create("ScrollingFrame", {
+        Parent = self.pageHolder,
+        BackgroundTransparency = 1,
+        Visible = false,
+        Size = UDim2.new(1,0,1,0),
+        CanvasSize = UDim2.new(0,0,10,0),
+        ScrollBarThickness = 4
+    })
+    create("UIListLayout",{Parent=page,Padding=UDim.new(0,5)})
+
+    local button = create("TextButton", {
+        Parent = self.tabHolder,
+        Size = UDim2.new(1,0,0,30),
+        BackgroundColor3 = theme.buttonColor,
+        Text = tabName,
+        TextColor3 = theme.textColor,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14
+    })
+    create("UICorner",{Parent=button,CornerRadius=UDim.new(0,6)})
+
+    button.MouseButton1Click:Connect(function()
+        for _,pg in pairs(self.pageHolder:GetChildren()) do
+            if pg:IsA("ScrollingFrame") then pg.Visible = false end
+        end
+        page.Visible = true
+        self.currentPage = page
+    end)
+
+    -- If it's the first tab, auto-select it
+    if not self.currentPage then
+        button:MouseButton1Click()
+    end
+
+    local tab = {}
+
+    -- Button element
+    function tab:Button(text, callback)
+        local b = create("TextButton", {
+            Parent = page,
+            Size = UDim2.new(0.95,0,0,30),
+            BackgroundColor3 = theme.buttonColor,
+            Text = text,
+            TextColor3 = theme.textColor,
+            Font = Enum.Font.Gotham,
+            TextSize = 14
+        })
+        create("UICorner",{Parent=b,CornerRadius=UDim.new(0,6)})
+        b.MouseButton1Click:Connect(callback or function() end)
+        return b
+    end
+
+    -- Toggle element
+    function tab:Toggle(text, default, callback)
+        local t = create("TextButton", {
+            Parent = page,
+            Size = UDim2.new(0.95,0,0,30),
+            BackgroundColor3 = theme.buttonColor,
+            Text = (default and "[ON] " or "[OFF] ") .. text,
+            TextColor3 = theme.textColor,
+            Font = Enum.Font.Gotham,
+            TextSize = 14
+        })
+        create("UICorner",{Parent=t,CornerRadius=UDim.new(0,6)})
+        local state = default or false
+        t.MouseButton1Click:Connect(function()
+            state = not state
+            t.Text = (state and "[ON] " or "[OFF] ") .. text
+            if callback then callback(state) end
+        end)
+        return t
+    end
+
+    -- Slider element
+    function tab:Slider(text, min, max, default, callback)
+        local frame = create("Frame", {
+            Parent = page,
+            Size = UDim2.new(0.95,0,0,40),
+            BackgroundColor3 = theme.buttonColor
+        })
+        create("UICorner",{Parent=frame,CornerRadius=UDim.new(0,6)})
+
+        local label = create("TextLabel", {
+            Parent = frame,
+            Size = UDim2.new(1,0,0.5,0),
+            BackgroundTransparency = 1,
+            Text = text .. ": " .. tostring(default),
+            TextColor3 = theme.textColor,
+            Font = Enum.Font.Gotham,
+            TextSize = 14
+        })
+
+        local slider = create("TextButton", {
+            Parent = frame,
+            Size = UDim2.new(1,0,0.5,0),
+            Position = UDim2.new(0,0,0.5,0),
+            BackgroundTransparency = 1,
+            Text = "[ " .. tostring(default) .. " ]",
+            TextColor3 = theme.textColor,
+            Font = Enum.Font.Gotham,
+            TextSize = 14
+        })
+
+        local val = default or min
+        slider.MouseButton1Click:Connect(function()
+            val = val + 1
+            if val > max then val = min end
+            slider.Text = "[ " .. tostring(val) .. " ]"
+            label.Text = text .. ": " .. tostring(val)
+            if callback then callback(val) end
+        end)
+
+        return slider
+    end
+
+    return tab
+end
+
+return UILib
