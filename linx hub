@@ -1,214 +1,301 @@
--- Simple UI Library (Rayfield-style)
--- Put this in GitHub / Pastebin / ModuleScript
--- Author: ChatGPT Custom Build
-
+-- UILib.lua — Minimal Rayfield-like UI library (fixed & working)
+-- Place this in ReplicatedStorage as a ModuleScript or upload raw to GitHub/Pastebin
 local UILib = {}
 UILib.__index = UILib
 
 -- Services
 local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 
--- Theme
-local theme = {
-    bgColor = Color3.fromRGB(30,30,30),
-    tabColor = Color3.fromRGB(40,40,40),
-    buttonColor = Color3.fromRGB(50,120,220),
-    textColor = Color3.fromRGB(255,255,255)
-}
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
--- Destroy old gui if exists
-if CoreGui:FindFirstChild("UILibGui") then
-    CoreGui.UILibGui:Destroy()
-end
-
--- Utility
-local function create(class, props)
+-- Helper to create instances (handles Parent last to avoid warnings)
+local function new(class, props)
     local inst = Instance.new(class)
-    for k,v in pairs(props) do
-        inst[k] = v
+    if props then
+        for k,v in pairs(props) do
+            if k ~= "Parent" then
+                pcall(function() inst[k] = v end)
+            end
+        end
+        if props.Parent then
+            inst.Parent = props.Parent
+        end
     end
     return inst
 end
 
--- Window
-function UILib:Window(title, accent, toggleKey)
+-- Create a window (returns window object)
+function UILib:Window(title, accentColor, toggleKey)
     local self = setmetatable({}, UILib)
 
     -- ScreenGui
-    self.gui = create("ScreenGui", {
+    self.gui = new("ScreenGui", {
         Name = "UILibGui",
-        Parent = CoreGui,
-        ResetOnSpawn = false
+        Parent = playerGui,
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     })
 
-    -- Main Frame
-    self.main = create("Frame", {
+    -- Main frame
+    self.main = new("Frame", {
         Parent = self.gui,
-        BackgroundColor3 = theme.bgColor,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 500, 0, 300),
-        Position = UDim2.new(0.5,-250,0.5,-150)
+        Size = UDim2.new(0, 560, 0, 360),
+        Position = UDim2.new(0.5, -280, 0.5, -180),
+        BackgroundColor3 = Color3.fromRGB(24, 24, 24),
+        BorderSizePixel = 0
     })
-    create("UICorner",{Parent=self.main,CornerRadius=UDim.new(0,10)})
+    new("UICorner", { Parent = self.main, CornerRadius = UDim.new(0, 10) })
 
-    -- Title
-    self.title = create("TextLabel", {
+    -- Title bar
+    self.titlebar = new("Frame", {
         Parent = self.main,
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = accentColor or Color3.fromRGB(44, 120, 224),
+        BorderSizePixel = 0
+    })
+    new("UICorner", { Parent = self.titlebar, CornerRadius = UDim.new(0, 8) })
+
+    new("TextLabel", {
+        Parent = self.titlebar,
+        Size = UDim2.new(1, -12, 1, 0),
+        Position = UDim2.new(0, 8, 0, 0),
         BackgroundTransparency = 1,
-        Size = UDim2.new(1,0,0,30),
         Text = title or "UILib Hub",
-        TextColor3 = accent or theme.textColor,
-        Font = Enum.Font.GothamBold,
-        TextSize = 18
+        TextColor3 = Color3.new(1,1,1),
+        Font = Enum.Font.SourceSansBold,
+        TextSize = 20,
+        TextXAlignment = Enum.TextXAlignment.Left
     })
 
-    -- Tabs holder
-    self.tabHolder = create("Frame", {
+    -- Tab column and page area
+    self.tabHolder = new("Frame", {
         Parent = self.main,
-        BackgroundColor3 = theme.tabColor,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 120, 1, -30),
-        Position = UDim2.new(0,0,0,30)
+        Size = UDim2.new(0, 140, 1, -36),
+        Position = UDim2.new(0, 0, 0, 36),
+        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+        BorderSizePixel = 0
     })
+    new("UICorner", { Parent = self.tabHolder, CornerRadius = UDim.new(0, 6) })
 
-    -- Page holder
-    self.pageHolder = create("Frame", {
+    self.pageHolder = new("Frame", {
         Parent = self.main,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1,-120,1,-30),
-        Position = UDim2.new(0,120,0,30)
+        Size = UDim2.new(1, -140, 1, -36),
+        Position = UDim2.new(0, 140, 0, 36),
+        BackgroundTransparency = 1
     })
 
     self.pages = {}
     self.currentPage = nil
 
-    -- Toggle Key
-    UserInputService.InputBegan:Connect(function(input, gpe)
-        if not gpe and input.KeyCode == (toggleKey or Enum.KeyCode.RightControl) then
+    -- Toggle key to show/hide UI
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == (toggleKey or Enum.KeyCode.RightControl) then
             self.gui.Enabled = not self.gui.Enabled
         end
     end)
 
+    -- Make window draggable by titlebar
+    do
+        local dragging, dragStart, startPos
+        self.titlebar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = self.main.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = input.Position - dragStart
+                self.main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+    end
+
     return self
 end
 
--- Create a new tab
+-- Create a tab (methods: Button, Toggle, Slider)
 function UILib:Tab(tabName)
-    local page = create("ScrollingFrame", {
+    assert(self.pageHolder and self.tabHolder, "Window must be created first (call :Window()).")
+
+    -- Scrolling page (content)
+    local page = new("ScrollingFrame", {
         Parent = self.pageHolder,
+        Size = UDim2.new(1, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
         BackgroundTransparency = 1,
-        Visible = false,
-        Size = UDim2.new(1,0,1,0),
-        CanvasSize = UDim2.new(0,0,10,0),
-        ScrollBarThickness = 4
+        ScrollBarThickness = 6,
+        CanvasSize = UDim2.new(0,0,0,0),
+        Visible = false
     })
-    create("UIListLayout",{Parent=page,Padding=UDim.new(0,5)})
+    local layout = new("UIListLayout", {
+        Parent = page,
+        Padding = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder
+    })
 
-    local button = create("TextButton", {
+    -- Auto-resize canvas when content changes
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 12)
+    end)
+
+    -- Tab button in left column
+    local btn = new("TextButton", {
         Parent = self.tabHolder,
-        Size = UDim2.new(1,0,0,30),
-        BackgroundColor3 = theme.buttonColor,
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = Color3.fromRGB(45, 45, 45),
         Text = tabName,
-        TextColor3 = theme.textColor,
-        Font = Enum.Font.GothamBold,
-        TextSize = 14
+        TextColor3 = Color3.new(1,1,1),
+        Font = Enum.Font.SourceSansBold,
+        TextSize = 16
     })
-    create("UICorner",{Parent=button,CornerRadius=UDim.new(0,6)})
+    new("UICorner", { Parent = btn, CornerRadius = UDim.new(0,6) })
 
-    button.MouseButton1Click:Connect(function()
-        for _,pg in pairs(self.pageHolder:GetChildren()) do
-            if pg:IsA("ScrollingFrame") then pg.Visible = false end
+    btn.MouseButton1Click:Connect(function()
+        for _, child in ipairs(self.pageHolder:GetChildren()) do
+            if child:IsA("ScrollingFrame") then
+                child.Visible = false
+            end
         end
         page.Visible = true
         self.currentPage = page
     end)
 
-    -- If it's the first tab, auto-select it
+    -- auto-select first tab
     if not self.currentPage then
-        button:MouseButton1Click()
+        page.Visible = true
+        self.currentPage = page
     end
 
     local tab = {}
 
-    -- Button element
     function tab:Button(text, callback)
-        local b = create("TextButton", {
+        local b = new("TextButton", {
             Parent = page,
-            Size = UDim2.new(0.95,0,0,30),
-            BackgroundColor3 = theme.buttonColor,
+            Size = UDim2.new(1, -12, 0, 36),
+            BackgroundColor3 = Color3.fromRGB(60,60,60),
             Text = text,
-            TextColor3 = theme.textColor,
-            Font = Enum.Font.Gotham,
+            TextColor3 = Color3.new(1,1,1),
+            Font = Enum.Font.SourceSans,
             TextSize = 14
         })
-        create("UICorner",{Parent=b,CornerRadius=UDim.new(0,6)})
-        b.MouseButton1Click:Connect(callback or function() end)
+        new("UICorner", { Parent = b, CornerRadius = UDim.new(0,6) })
+        b.MouseButton1Click:Connect(function()
+            pcall(callback)
+        end)
         return b
     end
 
-    -- Toggle element
     function tab:Toggle(text, default, callback)
-        local t = create("TextButton", {
+        default = default and true or false
+        local wrapper = new("Frame", {
             Parent = page,
-            Size = UDim2.new(0.95,0,0,30),
-            BackgroundColor3 = theme.buttonColor,
-            Text = (default and "[ON] " or "[OFF] ") .. text,
-            TextColor3 = theme.textColor,
-            Font = Enum.Font.Gotham,
-            TextSize = 14
+            Size = UDim2.new(1, -12, 0, 36),
+            BackgroundTransparency = 1
         })
-        create("UICorner",{Parent=t,CornerRadius=UDim.new(0,6)})
-        local state = default or false
-        t.MouseButton1Click:Connect(function()
+        local label = new("TextLabel", {
+            Parent = wrapper,
+            Size = UDim2.new(0.7, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = text,
+            TextColor3 = Color3.new(1,1,1),
+            Font = Enum.Font.SourceSans,
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Left
+        })
+        local tb = new("TextButton", {
+            Parent = wrapper,
+            Size = UDim2.new(0.28, 0, 0.66, 0),
+            Position = UDim2.new(0.72, 0, 0.17, 0),
+            BackgroundColor3 = Color3.fromRGB(70,70,70),
+            Text = default and "ON" or "OFF",
+            TextColor3 = Color3.new(1,1,1),
+            Font = Enum.Font.SourceSansBold,
+            TextSize = 12
+        })
+        new("UICorner", { Parent = tb, CornerRadius = UDim.new(0,6) })
+        local state = default
+        tb.MouseButton1Click:Connect(function()
             state = not state
-            t.Text = (state and "[ON] " or "[OFF] ") .. text
-            if callback then callback(state) end
+            tb.Text = state and "ON" or "OFF"
+            pcall(callback, state)
         end)
-        return t
+        return {
+            Frame = wrapper,
+            SetState = function(s) state = s; tb.Text = state and "ON" or "OFF"; if callback then pcall(callback, state) end end,
+            GetState = function() return state end
+        }
     end
 
-    -- Slider element
     function tab:Slider(text, min, max, default, callback)
-        local frame = create("Frame", {
+        min = tonumber(min) or 0
+        max = tonumber(max) or (min + 1)
+        default = tonumber(default) or min
+        local wrapper = new("Frame", {
             Parent = page,
-            Size = UDim2.new(0.95,0,0,40),
-            BackgroundColor3 = theme.buttonColor
+            Size = UDim2.new(1, -12, 0, 52),
+            BackgroundTransparency = 1
         })
-        create("UICorner",{Parent=frame,CornerRadius=UDim.new(0,6)})
-
-        local label = create("TextLabel", {
-            Parent = frame,
-            Size = UDim2.new(1,0,0.5,0),
+        local label = new("TextLabel", {
+            Parent = wrapper,
+            Size = UDim2.new(1, 0, 0.4, 0),
             BackgroundTransparency = 1,
             Text = text .. ": " .. tostring(default),
-            TextColor3 = theme.textColor,
-            Font = Enum.Font.Gotham,
-            TextSize = 14
+            TextColor3 = Color3.new(1,1,1),
+            Font = Enum.Font.SourceSans,
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Left
         })
-
-        local slider = create("TextButton", {
-            Parent = frame,
-            Size = UDim2.new(1,0,0.5,0),
-            Position = UDim2.new(0,0,0.5,0),
-            BackgroundTransparency = 1,
-            Text = "[ " .. tostring(default) .. " ]",
-            TextColor3 = theme.textColor,
-            Font = Enum.Font.Gotham,
-            TextSize = 14
+        local bar = new("Frame", {
+            Parent = wrapper,
+            Size = UDim2.new(1, 0, 0.45, 0),
+            Position = UDim2.new(0, 0, 0.5, 0),
+            BackgroundColor3 = Color3.fromRGB(60,60,60)
         })
+        new("UICorner", { Parent = bar, CornerRadius = UDim.new(0, 6) })
+        local knob = new("TextButton", {
+            Parent = bar,
+            Size = UDim2.new(0.1, 0, 1, 0),
+            BackgroundColor3 = Color3.fromRGB(100,100,100),
+            Text = "",
+            AutoButtonColor = false
+        })
+        new("UICorner", { Parent = knob, CornerRadius = UDim.new(0, 6) })
 
-        local val = default or min
-        slider.MouseButton1Click:Connect(function()
-            val = val + 1
-            if val > max then val = min end
-            slider.Text = "[ " .. tostring(val) .. " ]"
-            label.Text = text .. ": " .. tostring(val)
-            if callback then callback(val) end
+        local value = default
+        -- increment on click (simple, robust)
+        knob.MouseButton1Click:Connect(function()
+            value = value + 1
+            if value > max then value = min end
+            local ratio = (value - min) / math.max(1, (max - min))
+            knob.Size = UDim2.new(math.clamp(ratio, 0, 1), 0, 1, 0)
+            label.Text = text .. ": " .. tostring(value)
+            pcall(callback, value)
         end)
 
-        return slider
+        -- initialize knob size
+        local initRatio = (value - min) / math.max(1, (max - min))
+        knob.Size = UDim2.new(math.clamp(initRatio, 0, 1), 0, 1, 0)
+
+        return {
+            Frame = wrapper,
+            Set = function(v)
+                value = math.clamp(v, min, max)
+                local r = (value - min) / math.max(1, (max - min))
+                knob.Size = UDim2.new(r, 0, 1, 0)
+                label.Text = text .. ": " .. tostring(value)
+                pcall(callback, value)
+            end,
+            Get = function() return value end
+        }
     end
 
     return tab
